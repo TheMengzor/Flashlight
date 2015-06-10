@@ -9,6 +9,11 @@
 #import "UpdateChecker.h"
 #import "PluginModel.h"
 #import "PluginDirectoryAPI.h"
+#import "PluginInstallManager.h"
+#import "ConvenienceCategories.h"
+
+NSString * UpdateCheckerPluginsNeedingUpdatesDidChangeNotification = @"UpdateCheckerPluginsNeedingUpdatesDidChangeNotification";
+NSString * UpdateCheckerAutoupdateStatusChangedNotification = @"UpdateCheckerAutoupdateStatusChangedNotification";
 
 @implementation UpdateChecker
 
@@ -29,7 +34,7 @@
 
 - (void)reload {
     [[PluginDirectoryAPI shared] getPluginsNeedingUpdatesWithExistingVersions:[self pluginsByVersion] callback:^(NSArray *pluginsNeedingUpdate) {
-        dispatch_async(dispatch_get_main_queue(), ^{
+        PerformOnMainThread(^{
             self.pluginsNeedingUpdates = pluginsNeedingUpdate;
             [[NSNotificationCenter defaultCenter] postNotificationName:UpdateCheckerPluginsNeedingUpdatesDidChangeNotification object:self];
         });
@@ -53,6 +58,45 @@
     NSMutableArray *plugins = self.pluginsNeedingUpdates.mutableCopy;
     [plugins removeObject:plugin];
     self.pluginsNeedingUpdates = plugins;
+    PerformOnMainThread(^{
+        [[NSNotificationCenter defaultCenter] postNotificationName:UpdateCheckerPluginsNeedingUpdatesDidChangeNotification object:self];
+    });
+}
+
+#pragma mark Autoupdates
+
+- (void)setAutoupdating:(BOOL)autoupdating {
+    if (autoupdating != _autoupdating) {
+        _autoupdating = autoupdating;
+        [[NSNotificationCenter defaultCenter] postNotificationName:UpdateCheckerAutoupdateStatusChangedNotification object:self];
+        [self updateNextPluginOrFinishIfStillAutoupdating];
+    }
+}
+
+- (void)updateNextPluginOrFinishIfStillAutoupdating {
+    PerformOnMainThread(^{
+        if (self.autoupdating) {
+            if (self.pluginsNeedingUpdates.count > 0) {
+                NSString *plugin = self.pluginsNeedingUpdates.firstObject;
+                [[PluginInstallManager shared] installPlugin:[PluginModel installedPluginNamed:plugin] isUpdate:YES callback:^(BOOL success, NSError *error) {
+                    if (success) {
+                        
+                        // HACK: work-around a condition where the local plugin's info.json name is (illegally) different from its directory name, and we get into an infinite plugin loop.
+                        if ([self.pluginsNeedingUpdates containsObject:plugin]) {
+                            [self justInstalledPlugin:plugin];
+                        }
+                        // /HACK
+                        
+                        [self updateNextPluginOrFinishIfStillAutoupdating];
+                    } else {
+                        self.autoupdating = NO;
+                    }
+                }];
+            } else {
+                self.autoupdating = NO;
+            }
+        }
+    });
 }
 
 @end

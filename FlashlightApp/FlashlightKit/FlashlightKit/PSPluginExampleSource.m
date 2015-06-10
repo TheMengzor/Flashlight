@@ -45,7 +45,7 @@ NSString * const PSParsnipSourceDataPluginPathForIntentDictionaryKey = @"PSParsn
     
     self.fileEventQueue = dispatch_queue_create("-[PSPluginExampleSource fileEventQueue]", dispatch_queue_attr_make_with_qos_class(0, QOS_CLASS_BACKGROUND, 0));
     // watch the file descriptor for writes
-    self.dispatchSource = dispatch_source_create(DISPATCH_SOURCE_TYPE_VNODE, fileDesc, DISPATCH_VNODE_DELETE | DISPATCH_VNODE_WRITE | DISPATCH_VNODE_EXTEND | DISPATCH_VNODE_RENAME | DISPATCH_VNODE_REVOKE, self.fileEventQueue);
+    self.dispatchSource = dispatch_source_create(DISPATCH_SOURCE_TYPE_VNODE, fileDesc, DISPATCH_VNODE_DELETE | DISPATCH_VNODE_WRITE | DISPATCH_VNODE_EXTEND | DISPATCH_VNODE_RENAME | DISPATCH_VNODE_REVOKE | DISPATCH_VNODE_ATTRIB, self.fileEventQueue);
     
     __weak PSPluginExampleSource *weak_self = self;
     // call the passed block if the source is modified
@@ -85,7 +85,7 @@ NSString * const PSParsnipSourceDataPluginPathForIntentDictionaryKey = @"PSParsn
         NSString *intentTag = [@"plugin_intent/" stringByAppendingString:name];
         pluginPathsForIntents[intentTag] = pluginPath;
         
-        for (NSString *line in [self exampleLinesForPluginAtPath:pluginPath]) {
+        for (NSString *line in [self exampleLinesForPluginAtPath:pluginPath counterExamples:NO]) {
             NSString *trimmed = [line stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
             if (trimmed.length) {
                 if ([trimmed.lowercaseString isEqualToString:@"!always_invoke"]) {
@@ -101,6 +101,19 @@ NSString * const PSParsnipSourceDataPluginPathForIntentDictionaryKey = @"PSParsn
                 }
             }
         }
+        for (NSString *line in [self exampleLinesForPluginAtPath:pluginPath counterExamples:YES]) {
+            NSString *intentTag = [@"plugin_intent/<NOT>" stringByAppendingString:name];
+            NSString *trimmed = [line stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            if (trimmed.length) {
+                PSTaggedText *example = [PSTaggedText withExampleString:trimmed rootTag:intentTag];
+                if (example) {
+                    [examples addObject:example];
+                } else {
+                    // parse failed:
+                    [parserInfoOutput addObject:[NSString stringWithFormat:@"%@.bundle/counterexamples.txt error:\nExample '%@' is invalid.", name, line]];
+                }
+            }
+        }
     }
     
     Parsnip *ps = [Parsnip new];
@@ -112,13 +125,18 @@ NSString * const PSParsnipSourceDataPluginPathForIntentDictionaryKey = @"PSParsn
                               @"rhger rehgoerh grghegoi?",
                               @"what righei gheriogjerigp eeroguhegio",
                               @"a the it",
+                              @"1/2",
                               @"where who ?",
                               @"the : to",
-                              @""
+                              @"",
+                              @"1/2",
+                              @"2 + 3 / 5 - 4",
+                              @"@date(...)",
+                              @"@contact(...)",
                               ];
     NSInteger i = 0;
     for (NSString *ex in nullExamples) {
-        NSString *tag = [NSString stringWithFormat:@"plugin_intent/null_%li", (long)i++];
+        NSString *tag = [NSString stringWithFormat:@"plugin_intent/<NULL>%li", (long)i++];
         [ps learnExamples:@[[PSTaggedText withExampleString:ex rootTag:tag]]];
         [ps setLogProbBoost:1 forTag:tag];
     }
@@ -134,10 +152,11 @@ NSString * const PSParsnipSourceDataPluginPathForIntentDictionaryKey = @"PSParsn
     self.pathsOfPluginsToAlwaysInvoke = pathsForPluginsToAlwaysInvoke;
 }
 
-- (NSArray *)exampleLinesForPluginAtPath:(NSString *)pluginPath {
+- (NSArray *)exampleLinesForPluginAtPath:(NSString *)pluginPath counterExamples:(BOOL)counterExamples {
     // load examples for first supported user-preferred language, plus english
+    NSString *filename = counterExamples ? @"counterexamples" : @"examples";
     NSMutableSet *filePathsToRead = [NSMutableSet new];
-    [[self class] enumerateLocalizedVariantsOfKey:@"examples" block:^(NSString *key, BOOL *stop) {
+    [[self class] enumerateLocalizedVariantsOfKey:filename block:^(NSString *key, BOOL *stop) {
         NSString *filename = [key stringByAppendingPathExtension:@"txt"];
         NSString *fullPath = [pluginPath stringByAppendingPathComponent:filename];
         if ([[NSFileManager defaultManager] fileExistsAtPath:fullPath]) {
@@ -145,7 +164,7 @@ NSString * const PSParsnipSourceDataPluginPathForIntentDictionaryKey = @"PSParsn
             *stop = YES;
         }
     }];
-    [filePathsToRead addObject:[pluginPath stringByAppendingPathComponent:@"examples.txt"]];
+    [filePathsToRead addObject:[pluginPath stringByAppendingPathComponent:filename]];
     return [filePathsToRead.allObjects flatMap:^NSArray *(id obj) {
         return [[[[NSString alloc] initWithContentsOfFile:obj encoding:NSUTF8StringEncoding error:nil] componentsSeparatedByString:@"\n"] mapFilter:^id(id obj) {
             NSString *line = [obj stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];

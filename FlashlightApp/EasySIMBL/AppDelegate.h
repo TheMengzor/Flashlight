@@ -5,7 +5,6 @@
  */
 
 #import <Cocoa/Cocoa.h>
-#import "ITSwitch.h"
 #import <WebKit/WebKit.h>
 
 @class PluginListController;
@@ -16,8 +15,8 @@
 @property (nonatomic) NSString *loginItemPath;
 
 @property (assign) IBOutlet NSWindow *window;
-@property (nonatomic) IBOutlet NSButton *useSIMBLSwitch;
-- (IBAction)toggleUseSIMBL:(id)sender;
+
+- (IBAction)toggleFlashlightEnabled:(id)sender;
 
 @property (nonatomic) BOOL SIMBLOn;
 

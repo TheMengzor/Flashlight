@@ -80,8 +80,11 @@ const NSInteger PSMaxCandidatesPerRound = 50;
         PSProbabilityCounter *probCounter = [self.emissionProbs objectForKey:terminal.tag settingDefaultToValue:^id{
             return [PSProbabilityCounter new];
         }];
-        for (id feature in terminal.token.features) {
-            [probCounter addItem:feature];
+        if (![terminal.token.original isEqualToString:@"___"]) {
+            // ignore examples that are just ___ (three _'s)
+            for (id feature in terminal.token.features) {
+                [probCounter addItem:feature];
+            }
         }
     }
 }
@@ -95,6 +98,10 @@ const NSInteger PSMaxCandidatesPerRound = 50;
 
 #pragma mark Parsing
 - (PSParseCandidate *)parseText:(NSString *)text intoTag:(NSString *)rootTag {
+    return [self parseText:text intoCandidatesForTag:rootTag].firstObject;
+}
+
+- (NSArray *)parseText:(NSString *)text intoCandidatesForTag:(NSString *)rootTag {
     NSArray *candidates = [self initialCandidatesForRootTag:rootTag];
     NSInteger i = 0;
     for (PSToken *token in [text ps_tokenize]) {
@@ -113,7 +120,7 @@ const NSInteger PSMaxCandidatesPerRound = 50;
     /*for (PSParseCandidate *c in candidates) {
         NSLog(@"Candidate: %f, %@", c.logProb, [PSTaggedText withNode:c.node]);
     }*/
-    return candidates.firstObject;
+    return candidates;
 }
 
 - (void)addNewCandidatesToDictionary:(NSMutableDictionary *)dict withCandidate:(PSParseCandidate *)candidate addingToken:(PSToken *)token remainingRecursions:(NSInteger)recursions boost:(double)boostFactor {

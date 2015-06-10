@@ -21,6 +21,7 @@
 @property (nonatomic) IBOutlet NSTextView *errors;
 @property (nonatomic) NSDictionary *errorSections;
 
+@property (nonatomic) FlashlightResult *result;
 @property (weak) IBOutlet FlashlightResultView *resultView;
 @property (weak) IBOutlet NSTextField *resultTitle;
 
@@ -56,7 +57,8 @@
     
     self.queryEngine.resultsDidChangeBlock = ^(NSString *query, NSArray *results){
         weakSelf.resultTitle.stringValue = [weakSelf.queryEngine.results.firstObject json][@"title"] ? : @"None";
-        weakSelf.resultView.result = weakSelf.queryEngine.results.firstObject;
+        weakSelf.result = weakSelf.queryEngine.results.firstObject;
+        weakSelf.resultView.result = weakSelf.result;
         NSMutableDictionary *d = weakSelf.errorSections.mutableCopy;
         if (weakSelf.queryEngine.errorString) {
             d[@"Plugin.py Errors"] = weakSelf.queryEngine.errorString;
@@ -68,6 +70,10 @@
     };
     
     self.updateInfoLabel.stringValue = [NSString stringWithFormat:@"FlashlightTool %@", [NSBundle mainBundle].infoDictionary[@"CFBundleShortVersionString"]];
+    
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [self.window makeKeyAndOrderFront:nil];
+    });
 }
 
 - (void)applicationWillTerminate:(NSNotification *)aNotification {
@@ -78,6 +84,15 @@
     if (![sender.stringValue isEqualToString:self.lastQuery]) {
         self.lastQuery = sender.stringValue;
         [self.queryEngine updateQuery:sender.stringValue];
+    }
+}
+
+- (BOOL)control:(NSControl *)control textView:(NSTextView *)textView doCommandBySelector:(SEL)commandSelector {
+    if (commandSelector == @selector(insertNewline:)) {
+        [self openTargetResultWithOptions:0];
+        return YES;
+    } else {
+        return NO;
     }
 }
 
@@ -98,7 +113,9 @@
         [str appendAttributedString:obj2];
         return str;
     } initialVal:[NSAttributedString new]];
-    [self.errors.textStorage setAttributedString:errors];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self.errors.textStorage setAttributedString:errors];
+    });
 }
 
 - (void)windowDidBecomeKey:(NSNotification *)notification {
@@ -107,16 +124,6 @@
 
 - (void)windowWillClose:(NSNotification *)notification {
     [[NSApplication sharedApplication] terminate:nil];
-}
-
-- (void)controlTextDidEndEditing:(NSNotification *)obj {
-    __weak FlashlightToolAppDelegate *weakSelf = self;
-    [self.resultView.result pressEnter:self.resultView errorCallback:^(NSString *error) {
-        NSMutableDictionary *d = weakSelf.errorSections.mutableCopy;
-        [d removeObjectForKey:@"Plugin.py run() Errors"];
-        if (error) d[@"Plugin.py run() Errors"] = error;
-        weakSelf.errorSections = d;
-    }];
 }
 
 #pragma mark Actions
@@ -173,6 +180,16 @@
 
 - (IBAction)checkForUpdate:(id)sender {
     [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:@"http://flashlighttool.42pag.es"]];
+}
+
+- (void)openTargetResultWithOptions:(unsigned long long)options {
+    __weak FlashlightToolAppDelegate *weakSelf = self;
+    [self.resultView.result pressEnter:self.resultView errorCallback:^(NSString *error) {
+        NSMutableDictionary *d = weakSelf.errorSections.mutableCopy;
+        [d removeObjectForKey:@"Plugin.py run() Errors"];
+        if (error) d[@"Plugin.py run() Errors"] = error;
+        weakSelf.errorSections = d;
+    }];
 }
 
 @end
